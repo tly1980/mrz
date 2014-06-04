@@ -4,6 +4,9 @@ import importlib
 import multiprocessing
 import logging
 import argparse
+import os, sys
+import types
+
 
 import zmq
 import msgpack
@@ -11,6 +14,8 @@ import msgpack
 import utils
 
 logging.basicConfig(level=logging.INFO)
+
+sys.path.append(os.getcwd())
 
 class Worker(object):
 
@@ -56,9 +61,10 @@ class Worker(object):
             result = self.task_exec.do(
                 *task['args'], 
                 **task['kwargs'])
-            if hasattr(result, '__iter__'):
+
+            if isinstance(result, types.GeneratorType):
                 for r in result:
-                    self.logger.info("shotting %s with %s", self.result_addr, r )
+                    self.logger.debug("shotting %s with %s", self.result_addr, r )
                     self.result_socket.send(
                         msgpack.packb(r)
                     )
@@ -82,13 +88,13 @@ class Producer(object):
             "{}.{}".format(
             self._id, the_name)
         )
-        self.task_exec.logger = logging.getLogger(
+        self._exec.logger = logging.getLogger(
             "{}.exec.{}".format(self._id, the_name)
         )
 
     def init_zmq(self):
         self.logger.info(
-            "init_zmq: %s result_addr: %s", self.result_addr)
+            "init_zmq: result_addr: %s", self.result_addr)
 
         context = zmq.Context()
 
@@ -98,7 +104,7 @@ class Producer(object):
         self.result_socket.connect(self.result_addr)
 
     def run(self):
-        for t in self._task.tasks():
+        for t in self._exec.tasks():
             self.result_socket.send(msgpack.packb(t))
 
 
@@ -150,7 +156,7 @@ def start_producer(
 
     def fun(the_id):
         task_exec = exec_klass(**exec_kwargs)
-        w = Worker(
+        w = Producer(
                 '{}.{}'.format(prefix, the_id), result_addr, task_exec)
         w.init_zmq()
         w.run()
@@ -167,9 +173,9 @@ def start_producer(
 
 def main(args):
     params = utils.yaml_xtract(args.params)
-    klass_params = utils.yaml_xtract(args.klass_params)
+    exec_kwargs = utils.yaml_xtract(args.exec_kwargs)
 
-    params['klass_params'] = klass_params
+    params['exec_kwargs'] = exec_kwargs
 
     if args.fun == 'start_worker':
         start_worker(**params)
@@ -187,7 +193,7 @@ AP.add_argument(
     type=str)
 
 AP.add_argument(
-    'klass_params', 
+    'exec_kwargs', 
     default=None,
     help="Second set ofr parameters.",
     type=str)

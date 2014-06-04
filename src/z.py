@@ -6,7 +6,7 @@ import yaml
 import zmq
 import msgpack
 
-from utils import shout
+from utils import shout, yaml_xtract
 
 def shoot(addr, *args, **kwargs):
     context = zmq.Context()
